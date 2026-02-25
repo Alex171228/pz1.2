@@ -276,28 +276,28 @@ protoc --go_out=. --go_opt=paths=source_relative \
 
 ### 6.1. Login — получение токена (200)
 
-<!-- Вставить скриншот: POST /v1/auth/login -->
-_Скриншот будет добавлен_
+<img width="1252" height="600" alt="image" src="https://github.com/user-attachments/assets/da07e7df-e96a-4961-946f-16e3abebed88" /> 
+
 
 ### 6.2. Создание задачи (201)
 
-<!-- Вставить скриншот: POST /v1/tasks -->
-_Скриншот будет добавлен_
+<img width="1255" height="690" alt="image" src="https://github.com/user-attachments/assets/2bd219db-be94-4cd1-9321-201deab0b8af" /> 
+
 
 ### 6.3. Получение списка задач (200)
 
-<!-- Вставить скриншот: GET /v1/tasks -->
-_Скриншот будет добавлен_
+<img width="1248" height="744" alt="image" src="https://github.com/user-attachments/assets/becefcd7-8323-4b94-ba61-b93425e1f999" /> 
+
 
 ### 6.4. Запрос без токена (401)
 
-<!-- Вставить скриншот: GET /v1/tasks без Authorization -->
-_Скриншот будет добавлен_
+<img width="1266" height="557" alt="image" src="https://github.com/user-attachments/assets/8145eca7-bf39-4a84-afc0-aba93a3f9eff" />
+
 
 ### 6.5. Подтверждение прокидывания X-Request-ID
 
-<!-- Вставить скриншот: любой запрос, где видно X-Request-ID в заголовках ответа -->
-_Скриншот будет добавлен_
+<img width="1254" height="700" alt="image" src="https://github.com/user-attachments/assets/411225fd-c2d9-4a42-b1cb-baabf3240351" /> 
+
 
 ---
 
