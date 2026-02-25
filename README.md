@@ -307,7 +307,9 @@ protoc --go_out=. --go_opt=paths=source_relative \
 
 <img width="1254" height="700" alt="image" src="https://github.com/user-attachments/assets/411225fd-c2d9-4a42-b1cb-baabf3240351" /> 
 
-Postman collection для тестирования https://github.com/Alex171228/pz1.2/blob/main/pz1.2_postman_collection.json
+
+Postman collection для тестирования https://github.com/Alex171228/pz1.2/blob/main/pz1.2_postman_collection.json 
+
 ---
 
 ## 7. Примеры логов
