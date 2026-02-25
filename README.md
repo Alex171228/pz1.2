@@ -1,9 +1,14 @@
 # Практические занятия №1 и №2: Микросервисная архитектура
 
-## Описание
+**Дисциплина:** Технологии индустриального программирования  
+**Институт:** Институт перспективных технологий и индустриального программирования  
+**Кафедра:** Кафедра индустриального программирования  
+**Преподаватель:** Адышкин Сергей Сергеевич  
+**Семестр:** 2 семестр, 2025-2026 гг.  
+**Студент:** _ФИО_  
+**Группа:** _Номер группы_
 
-Учебная система из двух микросервисов для демонстрации межсервисного взаимодействия через HTTP и gRPC.
-
+---
 
 ## 1. Описание границ сервисов
 
@@ -17,19 +22,21 @@
 
 ---
 
-## Структура проекта
+## 2. Структура проекта
 
 ```
 pz1.2/
 ├── services/
 │   ├── auth/
 │   │   ├── cmd/auth/main.go          # Точка входа Auth
+│   │   ├── Dockerfile
 │   │   └── internal/
 │   │       ├── http/handler.go       # HTTP хендлеры
 │   │       ├── grpc/server.go        # gRPC сервер
 │   │       └── service/auth.go       # Бизнес-логика
 │   └── tasks/
 │       ├── cmd/tasks/main.go         # Точка входа Tasks
+│       ├── Dockerfile
 │       └── internal/
 │           ├── http/handler.go       # HTTP хендлеры
 │           ├── service/task.go       # Бизнес-логика
@@ -48,34 +55,365 @@ pz1.2/
 │   └── auth/                         # Сгенерированный код
 ├── docs/
 │   └── api.md                        # Документация API
-├── scripts/                          # Скрипты запуска
 ├── go.mod
 └── README.md
 ```
 
-## Требования
+---
 
-- Go 1.21+
+## 3. Схема взаимодействия
 
-## Запуск на сервере
+### ПЗ1: HTTP взаимодействие
 
-### Установка зависимостей
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant T as Tasks Service
+    participant A as Auth Service
+
+    C->>T: HTTP запрос с Authorization: Bearer token
+    T->>A: GET /v1/auth/verify (таймаут 3с)
+    A-->>T: 200 OK (valid: true) / 401 Unauthorized
+    T-->>C: 200/201/204 или 401/503
+```
+
+### ПЗ2: gRPC взаимодействие
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant T as Tasks Service
+    participant A as Auth Service
+
+    C->>T: HTTP запрос с Authorization: Bearer token
+    T->>A: gRPC Verify (deadline 2с)
+    A-->>T: VerifyResponse (valid/subject) или Unauthenticated
+    T-->>C: 200/201/204 или 401/503
+```
+
+---
+
+## 4. Спецификация API
+
+### 4.1. Auth Service (порт 8081)
+
+| Метод | Путь | Описание | Коды ответов |
+|-------|------|----------|--------------|
+| POST | `/v1/auth/login` | Аутентификация, получение токена | 200, 400, 401 |
+| GET | `/v1/auth/verify` | Проверка валидности токена | 200, 401 |
+
+**POST /v1/auth/login**
+
+Запрос:
+```json
+{
+  "username": "student",
+  "password": "student"
+}
+```
+
+Ответ 200:
+```json
+{
+  "access_token": "demo-token",
+  "token_type": "Bearer"
+}
+```
+
+Ошибки:
+- 400 — неверный формат запроса
+- 401 — неверные учетные данные
+
+**GET /v1/auth/verify**
+
+Заголовки:
+```
+Authorization: Bearer <token>
+X-Request-ID: <uuid> (опционально)
+```
+
+Ответ 200:
+```json
+{
+  "valid": true,
+  "subject": "student"
+}
+```
+
+Ответ 401:
+```json
+{
+  "valid": false,
+  "error": "unauthorized"
+}
+```
+
+### 4.2. Tasks Service (порт 8082)
+
+Все запросы требуют заголовок `Authorization: Bearer <token>`.
+
+| Метод | Путь | Описание | Коды ответов |
+|-------|------|----------|--------------|
+| POST | `/v1/tasks` | Создание задачи | 201, 400, 401, 503 |
+| GET | `/v1/tasks` | Список всех задач | 200, 401, 503 |
+| GET | `/v1/tasks/{id}` | Получение задачи по ID | 200, 401, 404, 503 |
+| PATCH | `/v1/tasks/{id}` | Обновление задачи | 200, 400, 401, 404, 503 |
+| DELETE | `/v1/tasks/{id}` | Удаление задачи | 204, 401, 404, 503 |
+
+**POST /v1/tasks**
+
+Запрос:
+```json
+{
+  "title": "Read lecture",
+  "description": "Prepare notes",
+  "due_date": "2026-01-10"
+}
+```
+
+Ответ 201:
+```json
+{
+  "id": "t_001",
+  "title": "Read lecture",
+  "description": "Prepare notes",
+  "due_date": "2026-01-10",
+  "done": false
+}
+```
+
+**GET /v1/tasks**
+
+Ответ 200:
+```json
+[
+  {"id": "t_001", "title": "Read lecture", "done": false},
+  {"id": "t_002", "title": "Do practice", "done": true}
+]
+```
+
+**GET /v1/tasks/{id}**
+
+Ответ 200:
+```json
+{
+  "id": "t_001",
+  "title": "Read lecture",
+  "description": "Prepare notes",
+  "done": false
+}
+```
+
+Ответ 404:
+```json
+{
+  "error": "task not found"
+}
+```
+
+**PATCH /v1/tasks/{id}**
+
+Запрос:
+```json
+{
+  "title": "Read lecture (updated)",
+  "done": true
+}
+```
+
+Ответ 200 — обновлённая задача.
+
+**DELETE /v1/tasks/{id}**
+
+Ответ 204 — без тела.
+
+### 4.3. gRPC API (ПЗ2)
+
+```protobuf
+syntax = "proto3";
+
+package auth;
+
+option go_package = "pz1.2/proto/auth";
+
+service AuthService {
+  rpc Verify(VerifyRequest) returns (VerifyResponse);
+}
+
+message VerifyRequest {
+  string token = 1;
+}
+
+message VerifyResponse {
+  bool valid = 1;
+  string subject = 2;
+  string error = 3;
+}
+```
+
+Команды генерации кода:
 
 ```bash
-git clone <repository>
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+protoc --go_out=. --go_opt=paths=source_relative \
+       --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+       proto/auth.proto
+```
+
+Результат: `proto/auth/auth.pb.go` и `proto/auth/auth_grpc.pb.go`.
+
+---
+
+## 5. Маппинг ошибок gRPC → HTTP (ПЗ2)
+
+| Ситуация | gRPC-код | HTTP-статус | Описание |
+|----------|----------|-------------|----------|
+| Невалидный токен | `Unauthenticated` | 401 Unauthorized | Auth вернул, что токен невалиден |
+| Внутренняя ошибка Auth | `Internal` | 503 Service Unavailable | Ошибка на стороне Auth |
+| Auth недоступен | `Unavailable` | 503 Service Unavailable | Сервис не отвечает |
+| Превышен deadline | `DeadlineExceeded` | 503 Service Unavailable | Таймаут gRPC-вызова (2 секунды) |
+
+Реализация в `services/tasks/internal/client/authclient/grpc.go`:
+- `codes.Unauthenticated` → клиенту `401` с `{"error": "invalid token"}`
+- Любая другая ошибка → клиенту `503` с `{"error": "auth service unavailable"}`
+
+---
+
+## 6. Скриншоты из Postman
+
+### 6.1. Login — получение токена (200)
+
+<!-- Вставить скриншот: POST /v1/auth/login -->
+_Скриншот будет добавлен_
+
+### 6.2. Создание задачи (201)
+
+<!-- Вставить скриншот: POST /v1/tasks -->
+_Скриншот будет добавлен_
+
+### 6.3. Получение списка задач (200)
+
+<!-- Вставить скриншот: GET /v1/tasks -->
+_Скриншот будет добавлен_
+
+### 6.4. Запрос без токена (401)
+
+<!-- Вставить скриншот: GET /v1/tasks без Authorization -->
+_Скриншот будет добавлен_
+
+### 6.5. Подтверждение прокидывания X-Request-ID
+
+<!-- Вставить скриншот: любой запрос, где видно X-Request-ID в заголовках ответа -->
+_Скриншот будет добавлен_
+
+---
+
+## 7. Примеры логов
+
+### 7.1. Успешная проверка токена через gRPC
+
+**Логи Auth Service:**
+
+```
+2026/02/25 20:32:14 Auth HTTP server starting on :8081
+2026/02/25 20:32:14 Auth gRPC server starting on :50051
+2026/02/25 20:32:42 [gRPC] Verify request for token: demo-token...
+2026/02/25 20:32:42 [gRPC] Token verified for subject: student
+```
+
+**Логи Tasks Service:**
+
+```
+2026/02/25 20:32:24 Using gRPC auth client, connecting to localhost:50051
+2026/02/25 20:32:24 Tasks HTTP server starting on :8082
+2026/02/25 20:32:42 [grpc-req-001] Calling Auth gRPC verify
+2026/02/25 20:32:42 [grpc-req-001] Auth gRPC verify: success, subject=student
+2026/02/25 20:32:42 [grpc-req-001] Token verified for subject: student
+2026/02/25 20:32:42 [grpc-req-001] Creating new task
+2026/02/25 20:32:42 [grpc-req-001] Task created: t_de636044
+2026/02/25 20:32:42 [grpc-req-001] POST /v1/tasks 201 1.5484ms
+```
+
+Видно, что:
+- Tasks передаёт `X-Request-ID` (`grpc-req-001`) во все лог-записи
+- gRPC verify проходит успешно, subject=student
+- Задача создана, ответ 201
+
+### 7.2. Невалидный токен через gRPC (401)
+
+**Логи Auth Service:**
+
+```
+2026/02/25 20:32:42 [gRPC] Verify request for token: invalid-to...
+2026/02/25 20:32:42 [gRPC] Token verification failed: invalid token
+```
+
+**Логи Tasks Service:**
+
+```
+2026/02/25 20:32:42 [grpc-req-003] Calling Auth gRPC verify
+2026/02/25 20:32:42 [grpc-req-003] Auth gRPC verify: unauthorized
+2026/02/25 20:32:42 [grpc-req-003] Invalid token
+2026/02/25 20:32:42 [grpc-req-003] GET /v1/tasks 401 0s
+```
+
+Auth возвращает gRPC-код `Unauthenticated`, Tasks транслирует его в HTTP 401.
+
+### 7.3. Auth недоступен (503)
+
+**Логи Tasks Service (Auth выключен):**
+
+```
+2026/02/25 20:36:47 Using gRPC auth client, connecting to localhost:50051
+2026/02/25 20:36:47 Tasks HTTP server starting on :8082
+2026/02/25 20:37:04 [grpc-req-fail-001] Calling Auth gRPC verify
+2026/02/25 20:37:04 [grpc-req-fail-001] Auth gRPC verify failed: rpc error: code = Unavailable
+    desc = connection error: desc = "transport: Error while dialing: dial tcp [::1]:50051:
+    connectex: No connection could be made because the target machine actively refused it."
+2026/02/25 20:37:04 [grpc-req-fail-001] Auth service unavailable: auth service error: ...
+2026/02/25 20:37:04 [grpc-req-fail-001] GET /v1/tasks 503 2.6212ms
+```
+
+**Ответ клиенту:**
+
+```
+HTTP/1.1 503 Service Unavailable
+{"error":"auth service unavailable"}
+```
+
+Auth недоступен → gRPC возвращает `Unavailable` → Tasks возвращает HTTP 503. Политика «fail closed»: при невозможности проверить токен доступ запрещён.
+
+---
+
+## 8. Запуск
+
+### Требования
+
+- Go 1.22+
+- Git
+- curl (для тестирования)
+
+### Установка
+
+```bash
+git clone https://github.com/Alex171228/pz1.2.git
 cd pz1.2
 go mod download
 ```
 
 ### ПЗ1: HTTP взаимодействие
 
-**Терминал 1 - Auth Service:**
+**Терминал 1 — Auth Service:**
+
 ```bash
 export AUTH_PORT=8081
 go run ./services/auth/cmd/auth
 ```
 
-**Терминал 2 - Tasks Service (HTTP режим):**
+**Терминал 2 — Tasks Service (HTTP режим):**
+
 ```bash
 export TASKS_PORT=8082
 export AUTH_BASE_URL=http://localhost:8081
@@ -85,14 +423,16 @@ go run ./services/tasks/cmd/tasks
 
 ### ПЗ2: gRPC взаимодействие
 
-**Терминал 1 - Auth Service:**
+**Терминал 1 — Auth Service:**
+
 ```bash
 export AUTH_PORT=8081
 export AUTH_GRPC_PORT=50051
 go run ./services/auth/cmd/auth
 ```
 
-**Терминал 2 - Tasks Service (gRPC режим):**
+**Терминал 2 — Tasks Service (gRPC режим):**
+
 ```bash
 export TASKS_PORT=8082
 export AUTH_GRPC_ADDR=localhost:50051
@@ -100,27 +440,23 @@ export AUTH_MODE=grpc
 go run ./services/tasks/cmd/tasks
 ```
 
-## Переменные окружения
+### Переменные окружения
 
-### Auth Service
+| Переменная | Сервис | Описание | По умолчанию |
+|------------|--------|----------|--------------|
+| AUTH_PORT | Auth | Порт HTTP сервера | 8081 |
+| AUTH_GRPC_PORT | Auth | Порт gRPC сервера | 50051 |
+| TASKS_PORT | Tasks | Порт HTTP сервера | 8082 |
+| AUTH_MODE | Tasks | Режим: `http` или `grpc` | http |
+| AUTH_BASE_URL | Tasks | URL Auth (для HTTP) | http://localhost:8081 |
+| AUTH_GRPC_ADDR | Tasks | Адрес Auth (для gRPC) | localhost:50051 |
 
-| Переменная | Описание | По умолчанию |
-|------------|----------|--------------|
-| AUTH_PORT | Порт HTTP сервера | 8081 |
-| AUTH_GRPC_PORT | Порт gRPC сервера | 50051 |
+---
 
-### Tasks Service
-
-| Переменная | Описание | По умолчанию |
-|------------|----------|--------------|
-| TASKS_PORT | Порт HTTP сервера | 8082 |
-| AUTH_MODE | Режим: http или grpc | http |
-| AUTH_BASE_URL | URL Auth (для HTTP) | http://localhost:8081 |
-| AUTH_GRPC_ADDR | Адрес Auth (для gRPC) | localhost:50051 |
-
-## Тестирование
+## 9. Тестирование (curl)
 
 ### Получение токена
+
 ```bash
 curl -s -X POST http://localhost:8081/v1/auth/login \
   -H "Content-Type: application/json" \
@@ -128,61 +464,77 @@ curl -s -X POST http://localhost:8081/v1/auth/login \
   -d '{"username":"student","password":"student"}'
 ```
 
+### Проверка токена напрямую
+
+```bash
+curl -i http://localhost:8081/v1/auth/verify \
+  -H "Authorization: Bearer demo-token" \
+  -H "X-Request-ID: req-002"
+```
+
 ### Создание задачи
+
 ```bash
 curl -i -X POST http://localhost:8082/v1/tasks \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer demo-token" \
-  -H "X-Request-ID: req-002" \
+  -H "X-Request-ID: req-003" \
   -d '{"title":"Do PZ17","description":"split services","due_date":"2026-01-10"}'
 ```
 
 ### Получение задач
+
 ```bash
 curl -i http://localhost:8082/v1/tasks \
   -H "Authorization: Bearer demo-token" \
-  -H "X-Request-ID: req-003"
-```
-
-### Запрос без токена (должен вернуть 401)
-```bash
-curl -i http://localhost:8082/v1/tasks \
   -H "X-Request-ID: req-004"
 ```
 
-## Контрольные вопросы
+### Запрос без токена (должен вернуть 401)
+
+```bash
+curl -i http://localhost:8082/v1/tasks \
+  -H "X-Request-ID: req-005"
+```
+
+---
+
+## 10. Контрольные вопросы
 
 ### ПЗ1
 
-1. **Почему межсервисный вызов должен иметь таймаут?**
-   - Предотвращение каскадных отказов
-   - Освобождение ресурсов при зависании
-   - Быстрое информирование клиента об ошибке
+**1. Почему межсервисный вызов должен иметь таймаут?**
 
-2. **Как request-id помогает при диагностике ошибок?**
-   - Позволяет связать логи разных сервисов
-   - Упрощает поиск проблем в распределённой системе
+Таймаут предотвращает каскадные отказы: если Auth «зависнет», Tasks не будет бесконечно ждать ответа, а вернёт клиенту ошибку через 2–3 секунды. Без таймаута накапливаются заблокированные горутины, что приводит к исчерпанию ресурсов и отказу всего сервиса.
 
-3. **Какой статус нужно вернуть клиенту на невалидный токен?**
-   - 401 Unauthorized
+**2. Как request-id помогает при диагностике ошибок?**
 
-4. **Как описать "точку отказа" между сервисами?**
-   - Auth недоступен → 503 Service Unavailable
+X-Request-ID — уникальный идентификатор, который прокидывается через все сервисы в цепочке вызовов. Позволяет связать логи Auth и Tasks для одного пользовательского запроса и быстро найти, на каком этапе произошла ошибка.
+
+**3. Какой статус нужно вернуть клиенту при невалидном токене?**
+
+401 Unauthorized — стандартный HTTP-статус, означающий, что клиент не прошёл аутентификацию.
+
+**4. Как описать «точку отказа» между сервисами?**
+
+Если Auth недоступен, Tasks возвращает 503 Service Unavailable. Это политика «fail closed»: при невозможности проверить токен доступ запрещён.
 
 ### ПЗ2
 
-1. **Что такое .proto и почему он считается контрактом?**
-   - Формальное описание API
-   - Генерация кода для клиента и сервера
+**1. Что такое .proto и почему он считается контрактом?**
 
-2. **Что такое deadline в gRPC и чем он полезен?**
-   - Ограничение времени на выполнение запроса
-   - Автоматическая отмена при превышении
+Файл `.proto` — формальное описание API (сервисы, методы, структуры сообщений) на языке Protocol Buffers. Он является контрактом, потому что по нему генерируется код для клиента и сервера: обе стороны обязаны следовать описанным типам и сигнатурам.
 
-3. **Почему "exactly-once" не может быть так прост в RPC?**
-   - Сетевые сбои и повторы
-   - Нужна идемпотентность
+**2. Что такое deadline в gRPC и чем он полезен?**
 
-4. **Как обеспечивать совместимость при расширении .proto?**
-   - Добавление новых полей с новыми номерами
-   - Использовать reserved для защиты
+Deadline — абсолютное время, до которого вызов должен завершиться. В отличие от таймаута, deadline автоматически пробрасывается через цепочку вызовов. Если время истекло, gRPC отменяет запрос и возвращает `DeadlineExceeded`.
+
+**3. Почему «exactly-once» не может быть так прост в RPC?**
+
+Сетевые сбои делают невозможным гарантировать однократное выполнение «из коробки»: запрос мог дойти до сервера, но ответ потерялся, и клиент повторит вызов. Для exactly-once нужна идемпотентность операций и дедупликация на стороне сервера.
+
+**4. Как обеспечивать совместимость при расширении .proto?**
+
+- Добавлять новые поля с новыми номерами (не переиспользовать старые)
+- Не удалять и не переименовывать существующие поля
+- Использовать `reserved` для защиты удалённых номеров полей от повторного использования
